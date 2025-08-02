@@ -1,73 +1,81 @@
-# tetra_dashboard.py
 import curses
+import csv
 import time
 import os
-import csv
-from datetime import datetime, timedelta
+import socket
 
-LOG_FILE = "/opt/tetra/tetra_sessions.csv"
-DISPLAY_DURATION = 30  # seconds
+SESSION_FILE = "/opt/tetra/tetra_sessions.csv"
 
+def get_ip_address():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return "No IP"
 
-def load_recent_sessions(duration_seconds):
-    now = datetime.now()
-    sessions = []
-    if not os.path.exists(LOG_FILE):
-        return []
-    with open(LOG_FILE, "r") as f:
-        reader = csv.reader(f)
+def parse_sessions():
+    now = time.time()
+    window = 60  # Look at the past 60 seconds
+    burst_count = 0
+    peak_rssi = -100
+
+    if not os.path.exists(SESSION_FILE):
+        return 0, -100
+
+    with open(SESSION_FILE, newline='') as csvfile:
+        reader = csv.DictReader(csvfile)
         for row in reader:
             try:
-                start_time = datetime.strptime(row[0], "%d/%m/%Y %H:%M:%S")
-                rssi = float(row[3])
-                if now - start_time <= timedelta(seconds=duration_seconds):
-                    sessions.append((start_time, rssi))
-            except (ValueError, IndexError):
+                ts = time.strptime(row['timestamp'], "%H:%M:%S")
+                current_time = time.localtime()
+                row_time = time.mktime(current_time[:3] + ts[3:6] + current_time[6:])
+                if now - row_time < window:
+                    burst_count += 1
+                    rssi = int(row.get("rssi", -100))
+                    peak_rssi = max(peak_rssi, rssi)
+            except:
                 continue
-    return sessions
 
+    return burst_count, peak_rssi
 
-def determine_threat_level(sessions):
-    if not sessions:
-        return "NONE", 0, None
-    
-    rssi_values = [rssi for _, rssi in sessions]
-    peak_rssi = max(rssi_values)
-    recent_count = len(sessions)
-
-    if peak_rssi > -35 and recent_count > 1:
-        level = "VERY HIGH"
-    elif peak_rssi > -42:
-        level = "HIGH"
-    elif peak_rssi > -50:
-        level = "MEDIUM"
-    elif peak_rssi > -65:
-        level = "LOW"
+def calculate_threat(burst_count, peak_rssi):
+    if burst_count > 10 and peak_rssi >= -25:
+        return "VERY HIGH"
+    elif burst_count > 7 and peak_rssi >= -30:
+        return "HIGH"
+    elif peak_rssi >= -35 or burst_count > 4:
+        return "MEDIUM"
+    elif peak_rssi >= -40 or burst_count > 1:
+        return "LOW"
     else:
-        level = "NONE"
+        return "NONE"
 
-    last_detection = max(sessions, key=lambda x: x[0])[0]
-    return level, peak_rssi, last_detection
-
-
-def main(stdscr):
+def draw_dashboard(stdscr):
     curses.curs_set(0)
     stdscr.nodelay(True)
-    while True:
-        stdscr.clear()
-        sessions = load_recent_sessions(DISPLAY_DURATION)
-        level, peak_rssi, last_seen = determine_threat_level(sessions)
 
-        stdscr.addstr(1, 2, f"Pi Eye TETRA Monitor")
-        stdscr.addstr(3, 4, f"Threat Level: {level}")
-        if peak_rssi:
-            stdscr.addstr(5, 4, f"Peak RSSI: {peak_rssi:.1f} dBm")
-        if last_seen:
-            stdscr.addstr(6, 4, f"Last detection: {last_seen.strftime('%H:%M:%S')}")
-        stdscr.addstr(8, 4, f"Signals in last {DISPLAY_DURATION}s: {len(sessions)}")
+    while True:
+        stdscr.erase()
+
+        ip = get_ip_address()
+        burst_count, peak_rssi = parse_sessions()
+        threat = calculate_threat(burst_count, peak_rssi)
+
+        stdscr.addstr(1, 2, "📡 Pi Eye - Emergency Signal Monitor")
+        stdscr.addstr(2, 2, f"Local IP: {ip}")
+        stdscr.addstr(4, 4, f"Threat Level: {threat}")
+        stdscr.addstr(5, 4, f"Recent bursts: {burst_count}")
+        stdscr.addstr(6, 4, f"Peak RSSI: {peak_rssi} dB")
+        stdscr.addstr(8, 2, f"Last update: {time.strftime('%H:%M:%S')}")
 
         stdscr.refresh()
         time.sleep(1)
 
+def main():
+    curses.wrapper(draw_dashboard)
+
 if __name__ == "__main__":
-    curses.wrapper(main)
+    main()
