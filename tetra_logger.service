@@ -1,0 +1,12 @@
+[Unit]
+Description=Pi Eye TETRA Logger
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/tetra/tetra_logger.py
+WorkingDirectory=/opt/tetra
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
