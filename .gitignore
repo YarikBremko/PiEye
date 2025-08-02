@@ -1,0 +1,7 @@
+# Ignore log files
+*.csv
+
+# Editor/OS junk
+*.swp
+*.pyc
+__pycache__/
