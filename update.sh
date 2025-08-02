@@ -8,7 +8,7 @@ sudo cp tetra_*.py /opt/tetra/
 sudo cp spotalert.py /usr/local/bin/
 
 # Copy .service files
-sudo cp tetra_monitor.service /etc/systemd/system/
+sudo cp tetra-monitor.service /etc/systemd/system/
 sudo cp tetra_logger.service /etc/systemd/system/
 sudo cp tetra_sdr_probe.service /etc/systemd/system/
 
